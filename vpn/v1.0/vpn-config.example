@@ -1,0 +1,13 @@
+# Example VPN ConfigMap — copy this to your quartermaster stack repo
+# and edit the values for your provider.
+#
+# Used by the VPN component (qm enable vpn).
+# Values are injected as env vars into the Gluetun container at runtime.
+version: "1"
+kind: ConfigMap
+metadata:
+  name: vpn-config
+data:
+  provider: protonvpn          # VPN provider (see supported list)
+  type: wireguard              # "wireguard" or "openvpn"
+  # server_regions: "us-ny"   # optional: filter by region

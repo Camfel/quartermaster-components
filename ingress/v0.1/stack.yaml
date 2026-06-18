@@ -1,0 +1,51 @@
+# Quartermaster Ingress component — v1.0
+#
+# HTTP/HTTPS reverse proxy with automatic TLS via Let's Encrypt.
+# Services opt in by adding an 'ingress' block to their manifest:
+#
+#   ingress:
+#     host: jellyfin.example.com
+#     port: 8096
+#     auth: true   # optional — protect with Authelia
+#
+# Caddy resolves service names via a generated hosts block, so
+# `reverse_proxy jellyfin:8096` works regardless of the container's
+# bridge IP.  When containers restart and IPs change, Quartermaster
+# regenerates the config and triggers a graceful reload.
+#
+# Prerequisites:
+#   - Port 80 and 443 forwarded from your router to this host
+#   - DNS A record for *.example.com pointing to your public IP
+#   - Set your domain via ConfigMap:
+#       qm configmap set caddy domain=example.com
+#
+# For authentication-protected services, also enable Authelia:
+#   qm enable authelia
+# Then add `auth: true` to any service's ingress block.
+#
+# To enable:
+#   qm enable caddy
+version: "1"
+kind: Stack
+metadata:
+  name: qm-caddy
+spec:
+  services:
+    - name: caddy
+      image: docker.io/library/caddy:latest
+      restart_policy: unless-stopped
+      network: public
+      ports:
+        - host: 80
+          container: 80
+        - host: 443
+          container: 443
+        - host: 2019
+          container: 2019   # admin API
+      volumes:
+        - source: /var/lib/quartermaster/caddy/Caddyfile
+          target: /etc/caddy/Caddyfile
+          type: bind
+        - source: /var/lib/quartermaster/caddy/data
+          target: /data
+          type: bind
