@@ -1,5 +1,7 @@
 # Quartermaster Components
 
+[![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)](https://github.com/Camfel/quartermaster-components/blob/main/VERSION)
+
 Curated component catalog for [Quartermaster](https://github.com/Camfel/quartermaster).
 Each component is a self-contained `stack.yaml` that defines one or more services.
 
