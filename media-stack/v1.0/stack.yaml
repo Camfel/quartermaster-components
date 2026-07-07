@@ -1,17 +1,12 @@
-# Quartermaster Media Stack component — v1.0
-#
-# Full Arr suite + Jellyfin for automated TV and movie downloads.
-# Torrent and indexer traffic routed through VPN (requires `qm enable vpn`).
-#
-# Services: qBittorrent → Prowlarr → Sonarr/Radarr → Jellyfin
 version: "1"
 kind: Stack
 metadata:
-  name: qm-media-stack
+  name: media-stack
 spec:
   services:
-    - name: qbittorrent
-      image: lscr.io/linuxserver/qbittorrent:latest
+    # ── Usenet Downloader (VPN) ────────────────────────────────────
+    - name: sabnzbd
+      image: lscr.io/linuxserver/sabnzbd:latest
       restart_policy: unless-stopped
       network: vpn
       depends_on:
@@ -19,17 +14,11 @@ spec:
       ports:
         - host: 8080
           container: 8080
-        - host: 6881
-          container: 6881
-          protocol: tcp
-        - host: 6881
-          container: 6881
-          protocol: udp
       volumes:
         - source: /mnt/downloads
           target: /downloads
           type: bind
-        - source: /opt/qbittorrent/config
+        - source: /opt/sabnzbd/config
           target: /config
           type: bind
       env:
@@ -38,17 +27,25 @@ spec:
         - name: PGID
           value: "1000"
         - name: TZ
-          value: "America/Chicago"
-        - name: WEBUI_PORT
-          value: "8080"
+          value: "Australia/Sydney"
+      healthcheck:
+        type: http
+        path: /api?mode=version
+        port: 8080
+        interval: 30s
+      log:
+        enabled: true
+        max_size: "50MB"
+        max_files: 5
 
+    # ── Indexer Manager (VPN) ──────────────────────────────────────
     - name: prowlarr
       image: lscr.io/linuxserver/prowlarr:latest
       restart_policy: unless-stopped
       network: vpn
       depends_on:
         - gluetun
-        - qbittorrent
+        - sabnzbd
       ports:
         - host: 9696
           container: 9696
@@ -62,14 +59,19 @@ spec:
         - name: PGID
           value: "1000"
         - name: TZ
-          value: "America/Chicago"
+          value: "Australia/Sydney"
+      healthcheck:
+        type: tcp
+        port: 9696
+        interval: 30s
 
+    # ── TV Series Automation ───────────────────────────────────────
     - name: sonarr
       image: lscr.io/linuxserver/sonarr:latest
       restart_policy: unless-stopped
       depends_on:
         - prowlarr
-        - qbittorrent
+        - sabnzbd
       ports:
         - host: 8989
           container: 8989
@@ -83,21 +85,30 @@ spec:
         - source: /opt/sonarr/config
           target: /config
           type: bind
+        - source: /opt/sonarr/config/resolv.conf
+          target: /etc/resolv.conf
+          type: bind
       env:
         - name: PUID
           value: "1000"
         - name: PGID
           value: "1000"
         - name: TZ
-          value: "America/Chicago"
+          value: "Australia/Sydney"
       network: public
+      healthcheck:
+        type: http
+        path: /ping
+        port: 8989
+        interval: 30s
 
+    # ── Movie Automation ───────────────────────────────────────────
     - name: radarr
       image: lscr.io/linuxserver/radarr:latest
       restart_policy: unless-stopped
       depends_on:
         - prowlarr
-        - qbittorrent
+        - sabnzbd
       ports:
         - host: 7878
           container: 7878
@@ -111,26 +122,100 @@ spec:
         - source: /opt/radarr/config
           target: /config
           type: bind
+        - source: /opt/radarr/config/resolv.conf
+          target: /etc/resolv.conf
+          type: bind
       env:
         - name: PUID
           value: "1000"
         - name: PGID
           value: "1000"
         - name: TZ
-          value: "America/Chicago"
+          value: "Australia/Sydney"
       network: public
+      healthcheck:
+        type: http
+        path: /ping
+        port: 7878
+        interval: 30s
 
-    - name: jellyfin
-      image: lscr.io/linuxserver/jellyfin:latest
+    # ── Cloudflare Bypass ──────────────────────────────────────────
+    - name: flaresolverr
+      image: ghcr.io/flaresolverr/flaresolverr:latest
       restart_policy: unless-stopped
+      network: vpn
+      ports:
+        - host: 8191
+          container: 8191
+      env:
+        - name: LOG_LEVEL
+          value: info
+      healthcheck:
+        type: http
+        path: /
+        port: 8191
+        interval: 30s
+
+    # ── Request Management ─────────────────────────────────────────
+    - name: jellyseerr
+      image: ghcr.io/seerr-team/seerr:latest
+      restart_policy: unless-stopped
+      network: public
       depends_on:
         - sonarr
         - radarr
+      ports:
+        - host: 5055
+          container: 5055
+      ingress:
+        host: requests
+        port: 5055
+        auth: false
+      volumes:
+        - source: /opt/jellyseerr/config
+          target: /app/config
+          type: bind
+        - source: /opt/jellyseerr/config/resolv.conf
+          target: /etc/resolv.conf
+          type: bind
+      env:
+        - name: PUID
+          value: "1000"
+        - name: PGID
+          value: "1000"
+        - name: TZ
+          value: "Australia/Sydney"
+      healthcheck:
+        type: http
+        path: /
+        port: 5055
+        interval: 30s
+      log:
+        enabled: true
+        max_size: "50MB"
+        max_files: 5
+
+    # ── Media Server ───────────────────────────────────────────────
+    - name: jellyfin
+      image: lscr.io/linuxserver/jellyfin:latest
+      restart_policy: unless-stopped
+      network: public
       ports:
         - host: 8096
           container: 8096
         - host: 8920
           container: 8920
+      resources:
+        gpu:
+          type: nvidia
+          id: all
+      depends_on:
+        - sonarr
+        - radarr
+      ingress:
+        host: media
+        port: 8096
+        auth: false
       volumes:
         - source: /mnt/media/tv
           target: /data/tvshows
@@ -141,20 +226,22 @@ spec:
         - source: /opt/jellyfin/config
           target: /config
           type: bind
+        - source: /opt/jellyfin/config/resolv.conf
+          target: /etc/resolv.conf
+          type: bind
       env:
         - name: PUID
           value: "1000"
         - name: PGID
           value: "1000"
         - name: TZ
-          value: "America/Chicago"
-      resources:
-        gpu:
-          type: nvidia
-          id: all
-      network: public
+          value: "Australia/Sydney"
       healthcheck:
         type: http
         path: /health
         port: 8096
         interval: 30s
+      log:
+        enabled: true
+        max_size: "100MB"
+        max_files: 5
