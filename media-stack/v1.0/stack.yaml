@@ -1,10 +1,33 @@
+# Quartermaster Media Stack — v1.0
+#
+# Fully automated Usenet-based media pipeline.
+# Torrent and indexer traffic routed through VPN (requires `qm enable vpn`).
+#
+# Setup:
+#   1. qm enable vpn              # VPN gateway (required for sabnzbd + prowlarr)
+#   2. qm enable ingress          # optional: reverse proxy with auto-TLS
+#   3. Edit this file or override via your config repo:
+#      - volume paths (/mnt/media, /mnt/downloads, /opt/<service>/config)
+#      - timezone (TZ)
+#      - ingress hosts (optional)
+#
+# Secrets to create (see each service's docs for format):
+#   - sabnzbd-api-key
+#   - prowlarr-api-key
+#   - sonarr-api-key
+#   - radarr-api-key
+#   - flaresolverr (none needed — just enable)
+#
+# Services: sabnzbd → prowlarr → sonarr/radarr → jellyfin + jellyseerr
+
 version: "1"
 kind: Stack
 metadata:
   name: media-stack
+
 spec:
   services:
-    # ── Usenet Downloader (VPN) ────────────────────────────────────
+    # ── Usenet Downloader (VPN) ────────────────────────────────────────
     - name: sabnzbd
       image: lscr.io/linuxserver/sabnzbd:latest
       restart_policy: unless-stopped
@@ -27,18 +50,14 @@ spec:
         - name: PGID
           value: "1000"
         - name: TZ
-          value: "Australia/Sydney"
+          value: Etc/UTC
       healthcheck:
         type: http
         path: /api?mode=version
         port: 8080
         interval: 30s
-      log:
-        enabled: true
-        max_size: "50MB"
-        max_files: 5
 
-    # ── Indexer Manager (VPN) ──────────────────────────────────────
+    # ── Indexer Manager (VPN) ──────────────────────────────────────────
     - name: prowlarr
       image: lscr.io/linuxserver/prowlarr:latest
       restart_policy: unless-stopped
@@ -59,16 +78,17 @@ spec:
         - name: PGID
           value: "1000"
         - name: TZ
-          value: "Australia/Sydney"
+          value: Etc/UTC
       healthcheck:
         type: tcp
         port: 9696
         interval: 30s
 
-    # ── TV Series Automation ───────────────────────────────────────
+    # ── TV Series Automation ───────────────────────────────────────────
     - name: sonarr
       image: lscr.io/linuxserver/sonarr:latest
       restart_policy: unless-stopped
+      network: public
       depends_on:
         - prowlarr
         - sabnzbd
@@ -85,27 +105,24 @@ spec:
         - source: /opt/sonarr/config
           target: /config
           type: bind
-        - source: /opt/sonarr/config/resolv.conf
-          target: /etc/resolv.conf
-          type: bind
       env:
         - name: PUID
           value: "1000"
         - name: PGID
           value: "1000"
         - name: TZ
-          value: "Australia/Sydney"
-      network: public
+          value: Etc/UTC
       healthcheck:
         type: http
         path: /ping
         port: 8989
         interval: 30s
 
-    # ── Movie Automation ───────────────────────────────────────────
+    # ── Movie Automation ───────────────────────────────────────────────
     - name: radarr
       image: lscr.io/linuxserver/radarr:latest
       restart_policy: unless-stopped
+      network: public
       depends_on:
         - prowlarr
         - sabnzbd
@@ -122,24 +139,20 @@ spec:
         - source: /opt/radarr/config
           target: /config
           type: bind
-        - source: /opt/radarr/config/resolv.conf
-          target: /etc/resolv.conf
-          type: bind
       env:
         - name: PUID
           value: "1000"
         - name: PGID
           value: "1000"
         - name: TZ
-          value: "Australia/Sydney"
-      network: public
+          value: Etc/UTC
       healthcheck:
         type: http
         path: /ping
         port: 7878
         interval: 30s
 
-    # ── Cloudflare Bypass ──────────────────────────────────────────
+    # ── Cloudflare Bypass (VPN) ────────────────────────────────────────
     - name: flaresolverr
       image: ghcr.io/flaresolverr/flaresolverr:latest
       restart_policy: unless-stopped
@@ -156,7 +169,7 @@ spec:
         port: 8191
         interval: 30s
 
-    # ── Request Management ─────────────────────────────────────────
+    # ── Request Management ─────────────────────────────────────────────
     - name: jellyseerr
       image: ghcr.io/seerr-team/seerr:latest
       restart_policy: unless-stopped
@@ -167,16 +180,9 @@ spec:
       ports:
         - host: 5055
           container: 5055
-      ingress:
-        host: requests
-        port: 5055
-        auth: false
       volumes:
         - source: /opt/jellyseerr/config
           target: /app/config
-          type: bind
-        - source: /opt/jellyseerr/config/resolv.conf
-          target: /etc/resolv.conf
           type: bind
       env:
         - name: PUID
@@ -184,18 +190,14 @@ spec:
         - name: PGID
           value: "1000"
         - name: TZ
-          value: "Australia/Sydney"
+          value: Etc/UTC
       healthcheck:
         type: http
         path: /
         port: 5055
         interval: 30s
-      log:
-        enabled: true
-        max_size: "50MB"
-        max_files: 5
 
-    # ── Media Server ───────────────────────────────────────────────
+    # ── Media Server ───────────────────────────────────────────────────
     - name: jellyfin
       image: lscr.io/linuxserver/jellyfin:latest
       restart_policy: unless-stopped
@@ -205,17 +207,9 @@ spec:
           container: 8096
         - host: 8920
           container: 8920
-      resources:
-        gpu:
-          type: nvidia
-          id: all
       depends_on:
         - sonarr
         - radarr
-      ingress:
-        host: media
-        port: 8096
-        auth: false
       volumes:
         - source: /mnt/media/tv
           target: /data/tvshows
@@ -226,22 +220,15 @@ spec:
         - source: /opt/jellyfin/config
           target: /config
           type: bind
-        - source: /opt/jellyfin/config/resolv.conf
-          target: /etc/resolv.conf
-          type: bind
       env:
         - name: PUID
           value: "1000"
         - name: PGID
           value: "1000"
         - name: TZ
-          value: "Australia/Sydney"
+          value: Etc/UTC
       healthcheck:
         type: http
         path: /health
         port: 8096
         interval: 30s
-      log:
-        enabled: true
-        max_size: "100MB"
-        max_files: 5
