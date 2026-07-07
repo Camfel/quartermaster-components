@@ -1,0 +1,183 @@
+# Quartermaster Grafana component — v1.0
+#
+# Metrics dashboards.  Connects to VictoriaMetrics automatically.
+# Pre-built Quartermaster overview dashboard with container counts,
+# health status, reconcile metrics, and per-service health.
+#
+# Setup:
+#   1. qm enable victoria-metrics  (required)
+#   2. qm enable grafana
+#   3. Open http://your-host:3000 (anonymous access, local-only)
+
+version: "1"
+kind: Stack
+metadata:
+  name: qm-grafana
+
+spec:
+  services:
+    - name: grafana
+      image: docker.io/grafana/grafana:latest
+      restart_policy: unless-stopped
+      network: internal
+      user: "472:472"
+      ports:
+        - host: 3000
+          container: 3000
+      volumes:
+        - source: /var/lib/quartermaster/grafana
+          target: /var/lib/grafana
+          type: bind
+      env:
+        - name: GF_AUTH_ANONYMOUS_ENABLED
+          value: "true"
+        - name: GF_AUTH_ANONYMOUS_ORG_ROLE
+          value: Admin
+        - name: GF_AUTH_BASIC_ENABLED
+          value: "false"
+      command:
+        - sh
+        - -c
+        - |
+          # ── Generate datasource and dashboard provisioning on first start ──
+          PROV_DIR=/etc/grafana/provisioning
+
+          if [ ! -f $PROV_DIR/datasources/datasource.yml ]; then
+            mkdir -p $PROV_DIR/datasources $PROV_DIR/dashboards
+            cat > $PROV_DIR/datasources/datasource.yml << 'EOF'
+          apiVersion: 1
+
+          datasources:
+            - name: VictoriaMetrics
+              type: prometheus
+              uid: prometheus
+              access: proxy
+              url: http://10.42.0.1:8428
+              isDefault: true
+              editable: false
+          EOF
+
+            cat > $PROV_DIR/dashboards/dashboards.yml << 'EOF'
+          apiVersion: 1
+
+          providers:
+            - name: Quartermaster
+              folder: ""
+              type: file
+              disableDeletion: false
+              editable: true
+              allowUiUpdates: true
+              options:
+                path: /etc/grafana/provisioning/dashboards
+          EOF
+
+            cat > $PROV_DIR/dashboards/quartermaster.json << 'DBEOF'
+          {
+            "annotations": { "list": [] },
+            "editable": true,
+            "fiscalYearStartMonth": 0,
+            "graphTooltip": 0,
+            "links": [],
+            "panels": [
+              {
+                "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+                "gridPos": { "h": 4, "w": 24, "x": 0, "y": 0 },
+                "id": 1,
+                "options": { "code": { "language": "plaintext", "showLineNumbers": false, "showMiniMap": false }, "content": "# Quartermaster\n\nContainer orchestrator for homelabs.", "mode": "markdown" },
+                "type": "text"
+              },
+              {
+                "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+                "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{"color": "green","value": null}] } } },
+                "gridPos": { "h": 8, "w": 6, "x": 0, "y": 4 },
+                "id": 2,
+                "options": { "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "orientation": "auto", "textMode": "auto", "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "showPercentChange": false },
+                "targets": [
+                  { "expr": "qm_containers_desired", "legendFormat": "Desired", "refId": "A" },
+                  { "expr": "qm_containers_running", "legendFormat": "Running", "refId": "B" },
+                  { "expr": "qm_containers_unhealthy", "legendFormat": "Unhealthy", "refId": "C" }
+                ],
+                "title": "Containers",
+                "type": "stat"
+              },
+              {
+                "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+                "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{"color": "red","value": null},{"color": "green","value": 1}] } } },
+                "gridPos": { "h": 8, "w": 6, "x": 6, "y": 4 },
+                "id": 3,
+                "options": { "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "orientation": "auto", "textMode": "auto", "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "showPercentChange": false },
+                "targets": [
+                  { "expr": "qm_lkg_healthy", "legendFormat": "LKG", "refId": "A" }
+                ],
+                "title": "LKG Healthy",
+                "type": "stat"
+              },
+              {
+                "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+                "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{"color": "green","value": null}] } } },
+                "gridPos": { "h": 8, "w": 6, "x": 12, "y": 4 },
+                "id": 4,
+                "options": { "reduceOptions": { "values": false, "calcs": ["lastNotNull"] }, "orientation": "auto", "textMode": "auto", "colorMode": "value", "graphMode": "area", "justifyMode": "auto", "showPercentChange": false },
+                "targets": [
+                  { "expr": "qm_reconcile_total", "legendFormat": "Total", "refId": "A" }
+                ],
+                "title": "Reconciles",
+                "type": "stat"
+              },
+              {
+                "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+                "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineInterpolation": "smooth", "fillOpacity": 10 } } },
+                "gridPos": { "h": 10, "w": 12, "x": 0, "y": 12 },
+                "id": 5,
+                "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+                "targets": [
+                  { "expr": "rate(qm_reconcile_duration_seconds_sum[5m]) / rate(qm_reconcile_duration_seconds_count[5m])", "legendFormat": "Duration (s)", "refId": "A" }
+                ],
+                "title": "Reconcile Duration",
+                "type": "timeseries"
+              },
+              {
+                "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+                "fieldConfig": { "defaults": { "color": { "mode": "palette-classic" }, "custom": { "lineInterpolation": "smooth", "fillOpacity": 10 } } },
+                "gridPos": { "h": 10, "w": 12, "x": 12, "y": 12 },
+                "id": 6,
+                "options": { "legend": { "displayMode": "list", "placement": "bottom" } },
+                "targets": [
+                  { "expr": "rate(qm_health_check_total[5m])", "legendFormat": "Health checks/s", "refId": "A" }
+                ],
+                "title": "Health Checks",
+                "type": "timeseries"
+              },
+              {
+                "datasource": { "type": "prometheus", "uid": "${DS_PROMETHEUS}" },
+                "fieldConfig": { "defaults": { "color": { "mode": "thresholds" }, "thresholds": { "mode": "absolute", "steps": [{"color": "green","value": null},{"color": "yellow","value": 1},{"color": "red","value": 3}] } } },
+                "gridPos": { "h": 8, "w": 24, "x": 0, "y": 22 },
+                "id": 7,
+                "options": { "reduceOptions": { "values": true, "calcs": ["lastNotNull"] }, "orientation": "horizontal", "textMode": "auto", "colorMode": "value", "graphMode": "none", "justifyMode": "auto", "showPercentChange": false },
+                "targets": [
+                  { "expr": "qm_consecutive_failures", "legendFormat": "{{service}}", "refId": "A" }
+                ],
+                "title": "Health Failures by Service",
+                "type": "bargauge"
+              }
+            ],
+            "refresh": "10s",
+            "schemaVersion": 39,
+            "tags": ["quartermaster"],
+            "templating": { "list": [] },
+            "time": { "from": "now-30m", "to": "now" },
+            "timepicker": {},
+            "timezone": "browser",
+            "title": "Quartermaster",
+            "uid": "qm-overview",
+            "version": 1
+          }
+          DBEOF
+          fi
+
+          exec /run.sh
+      healthcheck:
+        type: http
+        path: /api/health
+        port: 3000
+        interval: 30s

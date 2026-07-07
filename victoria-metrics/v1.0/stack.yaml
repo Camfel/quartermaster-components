@@ -1,0 +1,67 @@
+# Quartermaster VictoriaMetrics component — v1.0
+#
+# Metrics storage and query engine. 100% Prometheus-compatible,
+# 7× lighter than Prometheus.  Scrapes quartermaster, node-exporter,
+# and self metrics automatically.
+#
+# To enable:
+#   qm enable victoria-metrics
+#
+# A scrape config is auto-generated on first start.
+
+version: "1"
+kind: Stack
+metadata:
+  name: qm-victoria-metrics
+
+spec:
+  services:
+    - name: victoria-metrics
+      image: docker.io/victoriametrics/victoria-metrics:latest
+      restart_policy: unless-stopped
+      network: host
+      user: "65532:65532"
+      ports:
+        - host: 8428
+          container: 8428
+      volumes:
+        - source: /var/lib/quartermaster/victoria-metrics
+          target: /data
+          type: bind
+      command:
+        - sh
+        - -c
+        - |
+          # Generate scrape config if it doesn't exist
+          if [ ! -f /data/scrape.yml ]; then
+            cat > /data/scrape.yml << 'VMSCRAPE'
+          global:
+            scrape_interval: 15s
+
+          scrape_configs:
+            - job_name: quartermaster
+              static_configs:
+                - targets:
+                    - 127.0.0.1:9098
+              metrics_path: /v1/metrics
+
+            - job_name: node
+              static_configs:
+                - targets:
+                    - 127.0.0.1:9100
+              metrics_path: /metrics
+
+            - job_name: victoria-metrics
+              static_configs:
+                - targets:
+                    - 127.0.0.1:8428
+              metrics_path: /metrics
+          VMSCRAPE
+            chmod 644 /data/scrape.yml
+          fi
+          exec /victoria-metrics-prod -storageDataPath=/data -promscrape.config=/data/scrape.yml -retentionPeriod=30d -httpListenAddr=:8428
+      healthcheck:
+        type: http
+        path: /health
+        port: 8428
+        interval: 30s
