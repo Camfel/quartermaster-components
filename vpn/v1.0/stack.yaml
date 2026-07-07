@@ -4,16 +4,18 @@
 # depends_on: [gluetun] route all traffic through the VPN.
 #
 # Defaults to ProtonVPN OpenVPN — works immediately after:
-#   echo -n 'user' | qm create-secret vpn-user
-#   echo -n 'pass' | qm create-secret vpn-pass
+#   echo -n 'your-user' | qm secret create vpn-user
+#   echo -n 'your-pass' | qm secret create vpn-pass
 #   qm enable vpn
 #
-# Customise via ConfigMap:
+# Customise via ConfigMap in your config repo:
 #   qm configmap set vpn-config provider=mullvad type=wireguard
+
 version: "1"
 kind: Stack
 metadata:
   name: qm-vpn
+
 spec:
   services:
     - name: gluetun
@@ -22,12 +24,12 @@ spec:
       restart_policy: always
       env:
         - name: VPN_SERVICE_PROVIDER
-          value: "protonvpn"
+          value: protonvpn
           valueFrom:
             configMapRef: vpn-config
             key: provider
         - name: VPN_TYPE
-          value: "openvpn"
+          value: openvpn
           valueFrom:
             configMapRef: vpn-config
             key: type
@@ -40,13 +42,16 @@ spec:
           valueFrom:
             configMapRef: vpn-config
             key: firewall
-        - name: OPENVPN_USER
-          valueFrom:
-            secretRef: vpn-user
-        - name: OPENVPN_PASSWORD
-          valueFrom:
-            secretRef: vpn-pass
+        - name: OPENVPN_USER_SECRETFILE
+          value: /run/secrets/vpn-user
+        - name: OPENVPN_PASSWORD_SECRETFILE
+          value: /run/secrets/vpn-pass
+      secrets:
+        - name: vpn-user
+          secret_ref: vpn-user
+        - name: vpn-pass
+          secret_ref: vpn-pass
       healthcheck:
         type: tcp
         port: 8000
-        interval: "30s"
+        interval: 30s

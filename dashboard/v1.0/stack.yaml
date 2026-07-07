@@ -5,21 +5,34 @@
 #
 # To enable:
 #   qm enable dashboard
+#
+# Optional: add ingress in your config repo to expose it:
+#   ingress:
+#     host: dash
+#     port: 8090
+#     auth: true
+
 version: "1"
 kind: Stack
 metadata:
   name: qm-dashboard
+
 spec:
   services:
     - name: dashboard
-      image: ghcr.io/camfel/quartermaster-gui:v0.2.0
+      image: ghcr.io/camfel/quartermaster-gui:latest
       restart_policy: unless-stopped
+      network: public
       ports:
         - host: 8090
           container: 8090
       volumes:
-        - source: /run/quartermaster/daemon.sock
-          target: /run/quartermaster/daemon.sock
+        - source: /run/quartermaster
+          target: /run/quartermaster
           type: bind
       user: "999:989"
-      network: public
+      healthcheck:
+        type: http
+        path: /
+        port: 8090
+        interval: 30s
