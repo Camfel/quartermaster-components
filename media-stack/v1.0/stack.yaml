@@ -157,6 +157,8 @@ spec:
       image: ghcr.io/flaresolverr/flaresolverr:latest
       restart_policy: unless-stopped
       network: vpn
+      depends_on:
+        - gluetun
       ports:
         - host: 8191
           container: 8191
