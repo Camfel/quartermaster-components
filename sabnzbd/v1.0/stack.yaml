@@ -1,0 +1,43 @@
+# Quartermaster SABnzbd component — v1.0
+#
+# Usenet download client. Faster than torrents, no VPN required.
+#
+# Setup:
+#   1. Sign up for a Usenet provider (Newshosting, Eweka, etc.)
+#   2. Sign up for a NZB indexer (NZBGeek, NZBPlanet, etc.)
+#   3. Configure SABnzbd with provider credentials
+#   4. Add indexer to Prowlarr
+#   5. Connect Sonarr/Radarr to SABnzbd
+#
+# To enable: qm enable sabnzbd
+#
+version: "1"
+kind: Stack
+metadata:
+  name: qm-sabnzbd
+spec:
+  services:
+    - name: sabnzbd
+      image: lscr.io/linuxserver/sabnzbd:latest
+      restart_policy: unless-stopped
+      network: vpn
+      ports: []
+      volumes:
+        - source: /opt/sabnzbd/config
+          target: /config
+          type: bind
+        - source: /mnt/downloads
+          target: /downloads
+          type: bind
+      env:
+        - name: PUID
+          value: "1000"
+        - name: PGID
+          value: "1000"
+        - name: TZ
+          value: "Australia/Sydney"
+      healthcheck:
+        type: http
+        path: /api?mode=version
+        port: 8080
+        interval: 30s

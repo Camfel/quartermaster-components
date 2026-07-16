@@ -1,0 +1,54 @@
+# Quartermaster CrowdSec component — v1.0
+#
+# Intrusion detection watching Caddy, Authelia, Jellyfin, and Jellyseerr
+# logs for brute force, scanners, CVE attempts, and suspicious patterns.
+#
+# Enable:  add "crowdsec" to components in settings.json
+# Metrics: ctr -n quartermaster task exec crowdsec cscli metrics
+# Alerts:  ctr -n quartermaster task exec crowdsec cscli alerts list
+version: "1"
+kind: Stack
+metadata:
+  name: qm-crowdsec
+spec:
+  services:
+    - name: crowdsec
+      image: docker.io/crowdsecurity/crowdsec:latest
+      restart_policy: unless-stopped
+      network: public
+      env:
+        - name: COLLECTIONS
+          value: "crowdsecurity/caddy crowdsecurity/http-cve"
+        - name: DISABLE_ONLINE_API
+          value: "false"
+        - name: CROWDSEC_AGENT_MAX_RETRIES
+          value: "30"
+        - name: LOCAL_API_URL
+          value: "http://127.0.0.1:8080"
+      volumes:
+        - source: /var/lib/quartermaster/crowdsec/config.yaml
+          target: /etc/crowdsec/config.yaml
+          type: bind
+        - source: /var/lib/quartermaster/crowdsec/data
+          target: /var/lib/crowdsec/data
+          type: bind
+        - source: /var/lib/quartermaster/crowdsec/acquis.yaml
+          target: /etc/crowdsec/acquis.yaml
+          type: bind
+        - source: /var/lib/quartermaster/crowdsec/profiles.yaml
+          target: /etc/crowdsec/profiles.yaml
+          type: bind
+        - source: /var/lib/quartermaster/logs
+          target: /var/log/quartermaster
+          type: bind
+        - source: /var/lib/quartermaster/crowdsec/resolv.conf
+          target: /etc/resolv.conf
+          type: bind
+      healthcheck:
+        type: tcp
+        port: 8080
+        interval: 30s
+      log:
+        enabled: true
+        max_size: "100MB"
+        max_files: 5

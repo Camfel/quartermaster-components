@@ -1,0 +1,60 @@
+# Quartermaster Gotify component — v1.0
+#
+# Self-hosted push notification server.  Sends alerts to your
+# phone via the Gotify Android app (WebSocket, no Google Play
+# Services needed).  The Quartermaster daemon posts critical
+# alerts directly to Gotify for instant notification — no
+# scrape delay, no polling lag.
+#
+# Setup:
+#   1. qm enable gotify
+#   2. Open Gotify in your browser, log in (default admin/admin)
+#   3. Change the default password immediately
+#   4. Create an app, copy the token
+#   5. Set the token in settings.json:
+#        "alerting": { "gotify_url": "http://gotify:80", "gotify_token": "<token>" }
+#   6. Install the Gotify Android app, connect to your server
+#
+# Alerts sent by Quartermaster:
+#   - Health check failure → LKG rollback (priority 8)
+#   - Reconcile failure (priority 5)
+#   - LKG rollback failure (priority 10, emergency)
+#   - Successful LKG rollback (priority 5, informational)
+#
+# Priority scale: 0 (lowest) — 10 (highest)
+version: "1"
+kind: Stack
+metadata:
+  name: qm-gotify
+spec:
+  services:
+    - name: gotify
+      image: docker.io/gotify/server:latest
+      restart_policy: unless-stopped
+      network: internal
+      user: "65532:65532"
+      ports:
+        - host: 8095
+          container: 8095
+      volumes:
+        - source: /var/lib/quartermaster/gotify
+          target: /app/data
+          type: bind
+      env:
+        - name: GOTIFY_SERVER_PORT
+          value: "8095"
+        - name: GOTIFY_DEFAULTUSER_NAME
+          value: admin
+        - name: GOTIFY_DEFAULTUSER_PASS
+          value: admin
+        - name: GOTIFY_PASSSTRENGTH
+          value: "8"
+      healthcheck:
+        type: http
+        path: /
+        port: 8095
+        interval: 30s
+      ingress:
+        host: gotify
+        port: 8095
+        auth: true

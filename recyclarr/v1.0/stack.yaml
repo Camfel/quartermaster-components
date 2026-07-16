@@ -1,0 +1,36 @@
+# Quartermaster Recyclarr component — v1.0
+#
+# Syncs Trash Guides quality profiles and custom formats to
+# Radarr and Sonarr automatically.
+#
+# Setup:
+#   1. Create config: edit /var/lib/quartermaster/recyclarr/recyclarr.yml
+#   2. Enable: qm enable recyclarr
+#
+# Runs every night at 3 AM. First run is immediate.
+#
+version: "1"
+kind: Stack
+metadata:
+  name: qm-recyclarr
+spec:
+  services:
+    - name: recyclarr
+      image: ghcr.io/recyclarr/recyclarr:edge
+      restart_policy: unless-stopped
+      network: public
+      command:
+        - sh
+        - -c
+        - |
+          while true; do
+            recyclarr sync
+            sleep 86400
+          done
+      volumes:
+        - source: /var/lib/quartermaster/recyclarr
+          target: /config
+          type: bind
+        - source: /var/lib/quartermaster/recyclarr/resolv.conf
+          target: /etc/resolv.conf
+          type: bind

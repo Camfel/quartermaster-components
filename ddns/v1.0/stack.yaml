@@ -1,0 +1,56 @@
+version: "1"
+kind: Stack
+metadata:
+  name: qm-ddns
+spec:
+  services:
+    - name: ddns
+      image: docker.io/linuxserver/ddclient:latest
+      restart_policy: unless-stopped
+      network: public
+      secrets:
+        - name: ddns-password
+          secret_ref: ddns-password
+      env:
+        - name: PUID
+          value: "1000"
+        - name: PGID
+          value: "1000"
+        - name: DDNS_DOMAIN
+          valueFrom:
+            configMapRef: ddns
+            key: domain
+        - name: DDNS_SUBDOMAINS
+          valueFrom:
+            configMapRef: ddns
+            key: subdomains
+      command:
+        - sh
+        - -c
+        - |
+          PASS=$(cat /run/secrets/ddns-password)
+          cat > /config/ddclient.conf << CONF
+          daemon=300
+          ssl=yes
+          use=web, web=dynamicdns.park-your-domain.com/getip
+          protocol=namecheap
+          server=dynamicdns.park-your-domain.com
+          login=$DDNS_DOMAIN
+          password=$PASS
+          CONF
+          set -f
+          IFS=','; for sub in $DDNS_SUBDOMAINS; do
+            case "$sub" in
+              @) echo "$DDNS_DOMAIN" ;;
+              *) echo "$sub.$DDNS_DOMAIN" ;;
+            esac
+          done >> /config/ddclient.conf
+          unset PASS
+          exec ddclient -foreground -file /config/ddclient.conf
+      volumes:
+        - source: /var/lib/quartermaster/ddns
+          target: /config
+          type: bind
+        - source: /var/lib/quartermaster/ddns/resolv.conf
+          target: /etc/resolv.conf
+          type: bind

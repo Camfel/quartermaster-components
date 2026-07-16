@@ -1,0 +1,37 @@
+# Quartermaster Caddy component — v1.0
+version: "1"
+kind: Stack
+metadata:
+  name: qm-caddy
+spec:
+  services:
+    - name: caddy
+      image: docker.io/library/caddy:latest
+      restart_policy: unless-stopped
+      network: public
+      ports:
+        - host: 80
+          container: 80
+        - host: 443
+          container: 443
+        - host: 2019
+          container: 2019
+      volumes:
+        - source: /var/lib/quartermaster/caddy/Caddyfile
+          target: /etc/caddy/Caddyfile
+          type: bind
+        - source: /var/lib/quartermaster/caddy/data
+          target: /data
+          type: bind
+        - source: /var/lib/quartermaster/caddy/resolv.conf
+          target: /etc/resolv.conf
+          type: bind
+      healthcheck:
+        type: http
+        path: /healthz
+        port: 80
+        interval: 30s
+      log:
+        enabled: true
+        max_size: "100MB"
+        max_files: 7

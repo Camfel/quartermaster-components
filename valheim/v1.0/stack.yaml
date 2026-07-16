@@ -1,0 +1,91 @@
+# Quartermaster Valheim component — v1.0
+#
+# Dedicated Valheim game server for you and your friends.
+# Uses lloesche/valheim-server, the most popular Valheim Docker image.
+#
+# Setup:
+#   1. qm enable valheim
+#   2. Edit the world name, server name, and password below
+#   3. Friends connect via Tailscale:  servi:2456
+#      (or your public IP if port-forwarded)
+#
+# Ports (UDP + TCP):
+#   2456 — game traffic
+#   2457 — steam query (optional, for server browser listing)
+#   2458 — steam query (optional)
+#
+# First startup downloads the Valheim dedicated server (~2 GB).
+# World saves and backups live on /mnt/games/valheim (the big drive).
+# Config is inline — no bind-mounted config directory needed.
+#
+# Admin commands via container console:
+#   ctr -n quartermaster task exec -t --exec-id admin valheim sh
+#
+version: "1"
+kind: Stack
+metadata:
+  name: qm-valheim
+spec:
+  services:
+    - name: valheim
+      image: docker.io/lloesche/valheim-server:latest
+      restart_policy: unless-stopped
+      network: internal
+      stop_grace_period: 60s
+      ports:
+        - host: 2456
+          container: 2456
+          protocol: udp
+        - host: 2456
+          container: 2456
+          protocol: tcp
+        - host: 2457
+          container: 2457
+          protocol: udp
+        - host: 2457
+          container: 2457
+          protocol: tcp
+        - host: 2458
+          container: 2458
+          protocol: udp
+        - host: 2458
+          container: 2458
+          protocol: tcp
+      volumes:
+        - source: /mnt/games/valheim/data
+          target: /opt/valheim
+          type: bind
+        - source: /mnt/games/valheim/backups
+          target: /config/backups
+          type: bind
+      env:
+        - name: SERVER_NAME
+          value: "Quartermaster Valheim"
+        - name: WORLD_NAME
+          value: "Quartermaster"
+        - name: SERVER_PUBLIC
+          value: "false"
+        - name: UPDATE_ON_START
+          value: "true"
+        - name: TZ
+          value: "Australia/Sydney"
+      secrets:
+        - name: valheim-password
+          secret_ref: valheim-password
+      command:
+        - sh
+        - -c
+        - |
+          mkdir -p /opt/valheim/server /var/run/valheim
+          export SERVER_PASS="$(cat /run/secrets/valheim-password)"
+          exec /usr/local/sbin/bootstrap
+      # healthcheck disabled — Steam auth takes ~10 min on first start.
+      # Re-enable once server is stable and you've verified it works:
+      # healthcheck:
+      #   type: tcp
+      #   port: 2456
+      #   interval: 120s
+      log:
+        enabled: true
+        max_size: "50MB"
+        max_files: 5

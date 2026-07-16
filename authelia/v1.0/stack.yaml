@@ -1,0 +1,36 @@
+# Quartermaster Authelia component — v1.0
+version: "1"
+kind: Stack
+metadata:
+  name: qm-authelia
+spec:
+  services:
+    - name: authelia
+      image: docker.io/authelia/authelia:latest
+      restart_policy: unless-stopped
+      network: internal
+      secrets:
+        - name: authelia-client-id
+          secret_ref: authelia-client-id
+        - name: authelia-client-secret
+          secret_ref: authelia-client-secret
+      env: []
+      command:
+        - sh
+        - -c
+        - |
+          sed "s|__CLIENT_ID__|$(cat /run/secrets/authelia-client-id)|g; s|__CLIENT_SECRET__|$(cat /run/secrets/authelia-client-secret)|g" /config/configuration.tmpl > /config/configuration.yml
+          exec authelia --config /config/configuration.yml
+      volumes:
+        - source: /var/lib/quartermaster/authelia
+          target: /config
+          type: bind
+      healthcheck:
+        type: http
+        path: /api/health
+        port: 9091
+        interval: 30s
+      log:
+        enabled: true
+        max_size: "50MB"
+        max_files: 5

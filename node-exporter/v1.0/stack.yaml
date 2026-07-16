@@ -1,0 +1,48 @@
+# Quartermaster node_exporter component — v1.0
+#
+# Host metrics collector (CPU, memory, disk, network, systemd).
+# Scraped automatically by VictoriaMetrics.
+#
+# Enables the systemd collector for monitoring qm-daemon and
+# other systemd units.
+#
+# To enable:
+#   qm enable node-exporter
+#
+# After enabling, VictoriaMetrics auto-discovers it — no config needed.
+version: "1"
+kind: Stack
+metadata:
+  name: qm-node-exporter
+spec:
+  services:
+    - name: node-exporter
+      image: docker.io/prom/node-exporter:latest
+      restart_policy: unless-stopped
+      network: host
+      user: "65532:65532"
+      ports:
+        - host: 9100
+          container: 9100
+      volumes:
+        - source: /proc
+          target: /host/proc
+          type: bind
+        - source: /sys
+          target: /host/sys
+          type: bind
+        - source: /
+          target: /host/root
+          type: bind
+      command:
+        - /bin/node_exporter
+        - --path.procfs=/host/proc
+        - --path.sysfs=/host/sys
+        - --path.rootfs=/host/root
+        - --collector.systemd
+        - --web.listen-address=:9100
+      healthcheck:
+        type: http
+        path: /metrics
+        port: 9100
+        interval: 30s
